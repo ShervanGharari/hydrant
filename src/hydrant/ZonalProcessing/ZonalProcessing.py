@@ -12,8 +12,13 @@ import re
 
 
 
-def Fraction_to_Xarray(df, info, mapping, remove_zero_columns=True, threshold = None):
-    
+def Fraction_to_Xarray(df,
+                       info,
+                       mapping,
+                       remove_zero_columns=True,
+                       majority=False,
+                       threshold = None):
+
     # Sort the mapping dictionary based on keys
     mapping = dict(sorted(mapping.items()))
 
@@ -31,11 +36,11 @@ def Fraction_to_Xarray(df, info, mapping, remove_zero_columns=True, threshold = 
     filtered_columns = [col for col, num_part in zip(frac_columns, numeric_parts) if num_part in mapping]
     df = df[filtered_columns]
     #print(df)
-    
+
     # supress values smaller than a value to 0
     if threshold is not None:
         df[df < threshold] = 0.00
-    
+
 
     # Get the complete fraction part of the columns
     # Regular expression pattern to extract the non-digit part
@@ -47,7 +52,7 @@ def Fraction_to_Xarray(df, info, mapping, remove_zero_columns=True, threshold = 
         sys.exit('There are multiple values of'+info.get('prefix'))
     else:
         non_digit_parts = non_digit_parts[0]
-        #print ('Non-digit part of the dataframe is: '+ non_digit_parts) 
+        #print ('Non-digit part of the dataframe is: '+ non_digit_parts)
 
     # remove the non-integer part from column name and sort based on integer
     # Define regular expression pattern to remove non-digit part
@@ -69,7 +74,7 @@ def Fraction_to_Xarray(df, info, mapping, remove_zero_columns=True, threshold = 
             if f"{integer}" not in row.index:
                 df.at[idx, f"{integer}"] = 0
     #print(df)
-    
+
     # remove the non-integer part from column name and sort based on integer
     # Define regular expression pattern to remove non-digit part
     # Rename the columns
@@ -77,7 +82,7 @@ def Fraction_to_Xarray(df, info, mapping, remove_zero_columns=True, threshold = 
     # Sort the columns based on their integer values
     df = df[new_columns]
     #print(df)
-    
+
     # renormalizing
     # Calculate the sum of fractions for each fraction number
     fraction_sums = df.sum()
@@ -96,18 +101,21 @@ def Fraction_to_Xarray(df, info, mapping, remove_zero_columns=True, threshold = 
             # Normalize the frac columns
             df.loc[index, row.index] /= frac_sum
     #print(df)
-    
+
     # possible removal of the zeros
     if remove_zero_columns is True:
         df = df.loc[:, (df != 0).any(axis=0)]
         # also filter the mapping dictionary for the non zero column:
         mapping = {key: value for key, value in mapping.items() if int(key) in map(int, df.columns)}
-        
+
     # add fraction to column names
     new_columns = [non_digit_parts + col for col in df.columns]
     df.columns = new_columns
-    
+
     # ==============
+    # convert the fractions into 0 and 1 for majority
+    if majority:
+        df = df.eq(df.max(axis=1), axis=0).astype(int)
     # create xarray for majority and frac_
     data_array_frac = xr.DataArray(df.values, dims=(info.get('ID'), info.get('name_of_dataset')),\
                                    coords={info.get('ID'): df.index, info.get('name_of_dataset'): list(mapping.keys())})
@@ -116,21 +124,22 @@ def Fraction_to_Xarray(df, info, mapping, remove_zero_columns=True, threshold = 
     df['majority'] = df['majority'].str.extract(r'(\d+)').astype(int)
     data_array_majority = xr.DataArray(df['majority'].values, dims=(info.get('ID'),),\
                                        coords={info.get('ID'): df.index})
+    # pass the names from the mapping info
     data_array_name = xr.DataArray(list(mapping.values()), dims=(info.get('name_of_dataset'),),\
                                    coords={info.get('name_of_dataset'): list(mapping.keys())})
-    
+
     # Combine into xarray Dataset
     ds = xr.Dataset({info.get('name_of_dataset')+'_majority': data_array_majority,\
                      info.get('name_of_dataset')+'_frac': data_array_frac,\
                      info.get('name_of_dataset')+'_names': data_array_name})
-    
+
     #print(ds)
-    
+
     return ds, df
 
 
 def Stat_to_Xarray(df, info, mapping):
-    
+
     # Set 'COMID' column as index
     df.set_index(info['ID'], inplace=True)
 
@@ -246,25 +255,25 @@ def intersect_df(*dfs: pd.DataFrame,
     for i, col in enumerate(result.columns, start=1):
         new_col_name = f'comb_{i:04d}'  # Using f-string to format column names
         result.rename(columns={col: new_col_name}, inplace=True)
-    
+
     fraction = xr.DataArray(result.values,
                             dims=('id', 'comb'),
                             coords={'id': result.index,
                                     'comb': result.columns})
-    
+
     max_fraction = xr.DataArray(result.idxmax(axis=1).values,
                                 dims=('id'),
                                 coords={'id': result.index})
 
     # convert report to xarray
-    total_ds = report.to_xarray()    
+    total_ds = report.to_xarray()
     total_ds = total_ds.drop_vars(['index'])
     total_ds = total_ds.swap_dims({'index':'comb'})
 
     # add other variables to this
     total_ds['fraction'] = fraction
     total_ds['max_fraction'] = max_fraction
-    
+
     # rename the output_dim if provided
     total_ds = total_ds.rename_dims(output_dim)
 
