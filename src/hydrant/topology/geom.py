@@ -94,7 +94,7 @@ def merit_cst_prepare(
         cst_col_area = cst_col.get('area')
 
     if not cst.crs:
-        cst.set_crs(epsg=4326, inplace=True)
+        cst.set_crs(epsg=4326, inplace=True, allow_override=True)
         warnings.warn('CRS of the coastal hillslope Shapefile has been assumed to be EPSG:4326')
 
     if cst_col_id_reset:
@@ -152,7 +152,7 @@ def merit_cat_cst_merge (cat,
         catchment = cat
 
     # assign crs
-    catchment.set_crs(epsg=crs, inplace=True)
+    catchment.set_crs(epsg=crs, inplace=True, allow_override=True)
     catchment.reset_index(drop=True, inplace=True)
 
     return catchment
@@ -470,7 +470,7 @@ def prepare_ntopo(
     cat.reset_index(drop=True, inplace=True)
 
     # assign crs
-    river.set_crs(epsg=crs, inplace=True)
+    river.set_crs(epsg=crs, inplace=True, allow_override=True)
 
     if network.lower() == 'merit':
 
@@ -635,6 +635,7 @@ def subset_ntopo(
     cat_col_id = cat_cols.get('id')
     riv_col_id = riv_cols.get('id')
     riv_col_next_id = riv_cols.get('next_id')
+    riv_col_upstreamarea = riv_cols.get('upstream_area')
     
     # initialize
     ids = set()
@@ -668,7 +669,12 @@ def subset_ntopo(
         
         # check if outlet_id is included in the `riv` IDs
         assert riv[riv_col_id].isin(outlet_id).any(), "`outlet_id` must be chosen from segments included in `riv`"
-        
+
+        if riv_col_upstreamarea is not None:
+            riv_temp = riv[riv[riv_col_id].isin(outlet_id)]
+            riv_temp = riv_temp.sort_values(by=riv_col_upstreamarea, ascending=False)
+            outlet_id = set(riv_temp[riv_col_id].tolist())
+            
         # TBD: this takes time with touch_shapefile flag on as it search all the upstream
         # for the intersected shapefile, it should start from segments that are most downstream
         # this needs uparea to be provided, perhpas optional, to this code and the set is arranged
