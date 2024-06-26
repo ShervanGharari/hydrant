@@ -117,21 +117,21 @@ def Fraction_to_Xarray(df,
     if majority:
         df = df.eq(df.max(axis=1), axis=0).astype(int)
     # create xarray for majority and frac_
-    data_array_frac = xr.DataArray(df.values, dims=(info.get('ID'), info.get('name_of_dataset')),\
-                                   coords={info.get('ID'): df.index, info.get('name_of_dataset'): list(mapping.keys())})
+    data_array_frac = xr.DataArray(df.values, dims=(info.get('ID'), info.get('name_of_variable')),\
+                                   coords={info.get('ID'): df.index, info.get('name_of_variable'): list(mapping.keys())})
     # Get the column name with the maximum value (excluding 'majority' column)
     df['majority'] = df.idxmax(axis=1)
     df['majority'] = df['majority'].str.extract(r'(\d+)').astype(int)
     data_array_majority = xr.DataArray(df['majority'].values, dims=(info.get('ID'),),\
                                        coords={info.get('ID'): df.index})
     # pass the names from the mapping info
-    data_array_name = xr.DataArray(list(mapping.values()), dims=(info.get('name_of_dataset'),),\
-                                   coords={info.get('name_of_dataset'): list(mapping.keys())})
+    data_array_name = xr.DataArray(list(mapping.values()), dims=(info.get('name_of_variable'),),\
+                                   coords={info.get('name_of_variable'): list(mapping.keys())})
 
     # Combine into xarray Dataset
-    ds = xr.Dataset({info.get('name_of_dataset')+'_majority': data_array_majority,\
-                     info.get('name_of_dataset')+'_frac': data_array_frac,\
-                     info.get('name_of_dataset')+'_names': data_array_name})
+    ds = xr.Dataset({info.get('name_of_variable')+'_majority': data_array_majority,\
+                     info.get('name_of_variable')+'_frac': data_array_frac,\
+                     info.get('name_of_variable')+'_names': data_array_name})
 
     #print(ds)
 
