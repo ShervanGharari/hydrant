@@ -211,6 +211,7 @@ def intersect_df(*dfs: pd.DataFrame,
     result = pd.DataFrame(columns=[f'{" ".join(cols)}' for cols in combinations], \
                           index=dfs[0].index)
     combination_list = []
+    max_fraction_number = result.sum().idxmax()
 
     # loop over combination
     for cols in combinations:
@@ -230,6 +231,12 @@ def intersect_df(*dfs: pd.DataFrame,
                 combination_list.append(' '.join(cols))
         else:
             sys.exit("sum of columns cannot be negative")
+
+    # normalize
+    for index, row in result.iterrows():
+        if row.sum() == 0:
+            result.loc[index, max_fraction_number] = 1
+    result = result.div(result.sum(axis=1), axis=0)
 
     # total number of non zero combinations:
     print('total number of non zero combinations: ',len(combination_list))
