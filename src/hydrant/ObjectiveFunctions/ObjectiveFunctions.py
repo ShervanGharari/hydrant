@@ -2,29 +2,17 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+def keep_selected_vars(ds, selected_vars):
+    # Get the list of variables in the dataset
+    all_vars = list(ds.variables)
 
-def rename_vars_and_dims(ds, var_id, dim_id, var_time, dim_time):
-    
-    ds_renamed = ds
-    
-    # Check if variable and dimension have the same name
-    if var_id == dim_id:
-        ds_renamed = ds_renamed.rename({var_id: 'ID'})
-    else:
-        ds_renamed = ds_renamed.rename({var_id: 'ID', dim_id: 'ID'})
-    
-    # Check if variable and dimension have the same name
-    if var_time == dim_time:
-        ds_renamed = ds_renamed.rename({var_time: 'time'})
-    else:
-        ds_renamed = ds_renamed.rename({var_time: 'time', dim_time: 'time'})
-    
-    # return
-    return ds_renamed
+    # Variables to drop
+    vars_to_drop = [var for var in all_vars if var not in selected_vars]
 
-def rename_ds_variables(ds, info_ds):
-    ds_renamed = rename_vars_and_dims(ds, info_ds['var_id'], info_ds['dim_id'], info_ds['var_time'], info_ds['dim_time'])
-    return ds_renamed
+    # Drop the variables
+    ds_selected = ds.drop_vars(vars_to_drop)
+
+    return ds_selected
 
 def ObjectiveFunction(obs,
                       sim,
@@ -32,15 +20,41 @@ def ObjectiveFunction(obs,
                       info_sim={'var': 'Discharge', 'var_id': 'COMID', 'dim_id': 'COMID', 'var_time': 'time', 'dim_time': 'time'},
                       TimeStep='daily'):
     
-    # Extract relevant information
-    var_name_obs = info_obs['var']
-    var_name_sim = info_sim['var']
+    # slice the obs and sim based on varibale, time and ID
+    obs = keep_selected_vars(obs, [info_obs['var'], info_obs['var_id'], info_obs['var_time']])
+    sim = keep_selected_vars(sim, [info_sim['var'], info_sim['var_id'], info_sim['var_time']])
     
-    # rename
-    obs = rename_ds_variables(obs, info_obs)
-    sim = rename_ds_variables(sim, info_sim)
+    # rename var_id to ID and time_var to time
+    obs = obs.rename({info_obs['var']: 'obs', info_obs['var_id']: 'ID', info_obs['var_time']: 'time'})
+    if info_obs['dim_id'] in obs.dims:
+        obs = obs.rename({info_obs['dim_id']: 'ID'})
+    if info_obs['dim_time'] in obs.dims:
+        obs = obs.rename({info_obs['dim_time']: 'time'})
     
-    # Round to the daily time steps
+    # rename var_id to ID and time_var to time
+    sim = sim.rename({info_sim['var']: 'sim', info_sim['var_id']: 'ID', info_sim['var_time']: 'time'})
+    if info_sim['dim_id'] in sim.dims:
+        sim = sim.rename({info_sim['dim_id']: 'ID'})
+    if info_sim['dim_time'] in sim.dims:
+        sim = sim.rename({info_sim['dim_time']: 'time'})
+    
+    print(obs)
+    if 'ID' not in obs.coords:
+        obs = obs.set_coords('ID')
+    if 'time' not in obs.coords:
+        obs = obs.set_coords('time')
+    obs = obs.set_index(ID='ID')
+    obs = obs.set_index(time='time')
+
+    print(sim)
+    if 'ID' not in sim.coords:
+        sim = sim.set_coords('ID')
+    if 'time' not in sim.coords:
+        sim = sim.set_coords('time')
+    sim = sim.set_index(ID='ID')
+    sim = sim.set_index(time='time')
+    
+    # Round to the daily or hourly time steps
     if TimeStep == 'daily':
         obs['time'] = obs['time'].to_index().floor('d')
         sim['time'] = sim['time'].to_index().floor('d')
@@ -70,8 +84,8 @@ def ObjectiveFunction(obs,
     ds = xr.Dataset()
     
     # create the 
-    ds [var_name_obs+'_obs'] = obs_overlap_sorted[var_name_obs]
-    ds [var_name_sim+'_sim'] = sim_overlap_sorted[var_name_sim]
+    ds ['obs'] = obs_overlap_sorted['obs']
+    ds ['sim'] = sim_overlap_sorted['sim']
     ds ['time'] = obs_overlap['time']
     ds ['ID'] = obs_overlap['ID']
     
@@ -81,8 +95,8 @@ def ObjectiveFunction(obs,
     rmse_values = []
 
     for ID in ds['ID'].values:
-        observed = ds[var_name_obs+'_obs'].sel(ID=ID).values
-        simulated = ds[var_name_sim+'_sim'].sel(ID=ID).values
+        observed = ds['obs'].sel(ID=ID).values
+        simulated = ds['sim'].sel(ID=ID).values
 
         # Remove NaN values
         observed, simulated = filter_nan(observed, simulated)
@@ -101,16 +115,6 @@ def ObjectiveFunction(obs,
         kge_values.append(kge)
         nse_values.append(nse)
         rmse_values.append(rmse)
-        
-        # # print
-        # print(ID)
-        # kge = calculate_kge(observed, simulated)
-        # print(kge)
-        # nse = calculate_nse(observed, simulated)
-        # print(nse)
-        # rmse = calculate_rmse(observed, simulated)
-        # print(rmse)
-        # print('+++++++')
 
     # Add efficiency values as variables to the dataset
     ds['KGE'] = (('ID'), kge_values)
