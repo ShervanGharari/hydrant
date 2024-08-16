@@ -1,6 +1,38 @@
 import numpy as np
 import pandas as pd
 import xarray as xr
+import warnings
+
+def check_and_verify_dimensions(ds, vars, dim):
+    """
+    Check if the dimensions of the specified variables in the dataset match the provided dimension.
+    Raise an exception and stop if any variable does not match the expected dimensions.
+    
+    Parameters:
+    - ds (xr.Dataset): The xarray dataset containing the variables.
+    - vars (list of str): List of variable names to check.
+    - dim (tuple of str): The expected dimensions.
+    
+    Returns:
+    - None: If all variables match the expected dimensions.
+    
+    Raises:
+    - ValueError: If any variable does not match the expected dimensions.
+    """
+    if isinstance(dim, list):
+        dim = tuple(dim)
+    if isinstance(dim, str):
+        dim = tuple(dim)
+        
+    for var in vars:
+        if var in ds:
+            var_dims = ds[var].dims
+            if var_dims != dim:
+                raise ValueError(f"Variable {var} dimensions {var_dims} do not match expected dimensions {dim}.")
+        else:
+            raise ValueError(f"Variable {var}  that is defined in var_extra not found in the dataset.")
+
+    #print("All variables have the expected dimensions.")
 
 def keep_selected_vars(ds, selected_vars):
     # Get the list of variables in the dataset
@@ -16,13 +48,36 @@ def keep_selected_vars(ds, selected_vars):
 
 def ObjectiveFunction(obs,
                       sim,
-                      info_obs={'var': 'Discharge', 'var_id': 'COMID', 'dim_id': 'COMID', 'var_time': 'time', 'dim_time': 'time'},
-                      info_sim={'var': 'Discharge', 'var_id': 'COMID', 'dim_id': 'COMID', 'var_time': 'time', 'dim_time': 'time'},
+                      info_obs={'var': 'Discharge',
+                                'var_id': 'COMID',
+                                'dim_id': 'COMID',
+                                'var_time': 'time',
+                                'dim_time': 'time'},
+                      info_sim={'var': 'Discharge',
+                                'var_id': 'COMID',
+                                'dim_id': 'COMID',
+                                'var_time': 'time',
+                                'dim_time': 'time'},
                       TimeStep='daily'):
     
+    # Suppress warnings
+    warnings.filterwarnings("ignore")
+    
+    # check for var_extra and check if their dimension is dim_id
+    # observation
+    list_var_obs = [info_obs['var'], info_obs['var_id'], info_obs['var_time']]
+    if info_obs.get('var_extra') is not None:
+        check_and_verify_dimensions(obs, info_obs['var_extra'], info_obs['dim_id'])
+        list_var_obs.extend(info_obs['var_extra'])
+    # simulation
+    list_var_sim = [info_sim['var'], info_sim['var_id'], info_sim['var_time']]
+    if info_sim.get('var_extra') is not None:
+        check_and_verify_dimensions(sim, info_sim['var_extra'], info_sim['dim_id'])
+        list_var_sim.extend(info_sim['var_extra'])
+    
     # slice the obs and sim based on varibale, time and ID
-    obs = keep_selected_vars(obs, [info_obs['var'], info_obs['var_id'], info_obs['var_time']])
-    sim = keep_selected_vars(sim, [info_sim['var'], info_sim['var_id'], info_sim['var_time']])
+    obs = keep_selected_vars(obs, list_var_obs)
+    sim = keep_selected_vars(sim, list_var_sim)
     
     # rename var_id to ID and time_var to time
     obs = obs.rename({info_obs['var']: 'obs', info_obs['var_id']: 'ID', info_obs['var_time']: 'time'})
@@ -38,7 +93,7 @@ def ObjectiveFunction(obs,
     if info_sim['dim_time'] in sim.dims:
         sim = sim.rename({info_sim['dim_time']: 'time'})
     
-    print(obs)
+    #print(obs)
     if 'ID' not in obs.coords:
         obs = obs.set_coords('ID')
     if 'time' not in obs.coords:
@@ -46,7 +101,7 @@ def ObjectiveFunction(obs,
     obs = obs.set_index(ID='ID')
     obs = obs.set_index(time='time')
 
-    print(sim)
+    #print(sim)
     if 'ID' not in sim.coords:
         sim = sim.set_coords('ID')
     if 'time' not in sim.coords:
@@ -79,15 +134,25 @@ def ObjectiveFunction(obs,
     # Sort data based on IDs
     obs_overlap_sorted = obs_overlap.sortby('ID')
     sim_overlap_sorted = sim_overlap.sortby('ID')
+    
+    # print
+    #print(obs_overlap_sorted)
+    #print(sim_overlap_sorted)
 
     # Create new xarray object to store efficiency values
     ds = xr.Dataset()
     
-    # create the 
+    # populate the ds and pass the extra var with simulation and observation prefix
     ds ['obs'] = obs_overlap_sorted['obs']
     ds ['sim'] = sim_overlap_sorted['sim']
     ds ['time'] = obs_overlap['time']
     ds ['ID'] = obs_overlap['ID']
+    if info_obs.get('var_extra') is not None:
+        for var in info_obs.get('var_extra'):
+            ds ['obs_'+var] = obs_overlap_sorted[var]
+    if info_sim.get('var_extra') is not None:
+        for var in info_sim.get('var_extra'):
+            ds ['sim_'+var] = sim_overlap_sorted[var]    
     
     # Create empty lists to store efficiency values for each variable
     kge_values = []
@@ -121,8 +186,10 @@ def ObjectiveFunction(obs,
     ds['NSE'] = (('ID'), nse_values)
     ds['RMSE'] = (('ID'), rmse_values)
     
+    # Warning back to default
+    warnings.filterwarnings("default")
+    
     return ds
-
 
 
 def filter_nan(s, o):
