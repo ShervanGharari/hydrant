@@ -159,8 +159,8 @@ def ObjectiveFunction(obs,
         # populate the ds and pass the extra var with simulation and observation prefix
         ds ['obs'] = obs_overlap_sorted['obs']
         ds ['sim'] = sim_overlap_sorted['sim']
-        ds ['time'] = obs_overlap['time']
-        ds ['ID'] = obs_overlap['ID']
+        ds ['time'] = obs_overlap_sorted['time']
+        ds ['ID'] = obs_overlap_sorted['ID']
         if info_obs.get('var_extra') is not None:
             for var in info_obs.get('var_extra'):
                 ds ['obs_'+var] = obs_overlap_sorted[var]
